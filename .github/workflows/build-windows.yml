@@ -1,1 +1,51 @@
+name: Build Windows EXE
 
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # можно запускать вручную кнопкой
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          arch: 'win64_msvc2019_64'
+          cache: true
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_PREFIX_PATH="${{ env.QT_ROOT_DIR }}" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release
+
+      - name: Deploy Qt dependencies
+        run: |
+          windeployqt --release --no-translations --no-compiler-runtime build/Release/HannyLauncher.exe
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          $src = "build/Release"
+          $files = @("$src/HannyLauncher.exe")
+          $files += Get-ChildItem "$src/*.dll" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+          foreach ($dir in @("platforms","styles","imageformats","tls","networkinformation","generic","iconengines")) {
+            if (Test-Path "$src/$dir") { $files += "$src/$dir" }
+          }
+          Compress-Archive -Path $files -DestinationPath "HannyLauncher-Windows.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HannyLauncher-Windows
+          path: HannyLauncher-Windows.zip
+          retention-days: 30
